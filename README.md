@@ -1,2 +1,2 @@
 # Hubitat
-Neerav Modi's Hubitat projects
+Hubitat Elevation apps and drivers
