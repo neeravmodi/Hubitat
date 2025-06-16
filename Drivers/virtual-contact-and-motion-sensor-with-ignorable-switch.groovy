@@ -3,7 +3,7 @@
  *  Project URL: https://github.com/neeravmodi/Hubitat/Drivers
  *  Copyright 2025 Neerav Modi
  *
- *  ImportURL: 
+ *  ImportURL: https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Drivers/virtual-contact-and-motion-sensor-with-ignorable-switch.groovy
  *
  *  Description:
  *  
@@ -41,7 +41,7 @@ metadata {
 			name: "Virtual Contact and Motion Sensor With Ignorable Switch", 
 			namespace: "neeravmodi", 
 			author: "Neerav Modi",
-			importUrl: "??",
+			importUrl: "https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Drivers/virtual-contact-and-motion-sensor-with-ignorable-switch.groovy",
 			description: "A driver to mirror a contact or motion sensor as a switch.  However, turning the switch on or off is ignored by default. Useful hack in HomeKit and the Home app to display the state of contact or motion sensors on the main Home page, instead of opening the Security tab and then choosing Contact Sensors or Motion Sensors. Configurable to reverse the switch behavior and to not ignore switch toggling."
 		) {
 
