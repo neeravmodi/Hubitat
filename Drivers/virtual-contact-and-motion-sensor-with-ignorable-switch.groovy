@@ -26,7 +26,7 @@
  *
  *  -----------------------------------------------------------------------------------------------------
  *
- *  Last modified: 2025-06-16
+ *  Last modified: 2025-06-24
  *
  *  Change History:
  *
@@ -34,6 +34,9 @@
  *  -------  ----        -----------
  *  v0.1     2025-06-01  Initial pre-release
  *  v0.2     2025-06-16  Initial release
+ *  v0.3     2025-06-24  Added delay when ignoring switch toggling to minimize Event race condition
+ *                       Added info logging, default is on
+ *                       Changed debug logging to default to off
  */
 
 metadata {
@@ -63,7 +66,8 @@ metadata {
 	preferences {
 		input name: "isReversed", type: "bool", default: false, title: "Reverse Switch Behavior", description: "By default, an open contact turns the switch ON.  Turn this preference ON for an open contact to turn the switch OFF."
         input name: "switchIgnored", type: "bool", default: true, title: "Ignore Switch On/Off", description: "When this preference is ON, turning the switch on or off is ignored.  This prevents toggling the switch in the Home app from affecting the state of the device.  Turn this preference OFF to allow changes to the switch to also change the state of the contact and motion sensors."
-        input name: "debugLogging", type: "bool", default: true, title: "Enable debug logging?", description: "Turn off to disable debug logs"
+        input name: "debugLogging", type: "bool", default: false, title: "Enable debug logging?", description: "Turn on to enable debug logs"
+        input name: "infoLogging", type: "bool", default: true, title: "Enable info logging?", description: "Turn on to enable info logs"
 	}
 }
 
@@ -71,6 +75,7 @@ String version() { return "0.2" }
 
 def contactOpen(){
 	
+    logInfo("Contact opened.")
     logDebug("contactOpen() called")
 	sendEvent(name: "contact", value: "open", descriptionText: "${device.displayName} contact is open.")
 	sendEvent(name: "motion", value: "active", descriptionText: "${device.displayName} motion is active.")	
@@ -88,6 +93,7 @@ def contactOpen(){
 
 def contactClose(){
 	
+    logInfo("Contact closed.")
     logDebug("contactClose() called")
 	sendEvent(name: "contact", value: "closed", descriptionText: "${device.displayName} contact is closed.")
 	sendEvent(name: "motion", value: "inactive", descriptionText: "${device.displayName} motion is inactive.")	
@@ -105,12 +111,14 @@ def contactClose(){
 
 def motionActive() {
 	
+    logInfo("Motion active.")
     logDebug("motionActive() called")
 	contactOpen()
 }
 
 def motionInactive() {
 	
+    logInfo("Motion inactive.")
     logDebug("motionInactive() called")
 	contactClose()
 }
@@ -144,8 +152,13 @@ def on(){
 			}
 		}
 
+		// Prevent event race condition
+		pauseExecution(250)
+
 		// Reverted state
 		sendEvent(name: "switch", value: switchState, descriptionText: "${device.displayName} switch reverted to ${switchState}.")
+   		logInfo("Switch turned on. Ignored and reverted.")
+		logDebug("Switch reverted to ${switchState}.")
 
 	} else {
 		// Normal switch operation
@@ -163,6 +176,7 @@ def on(){
 		sendEvent(name: "contact", value: contactState, descriptionText: "${device.displayName} contact is ${contactState}.")
 		sendEvent(name: "motion", value: motionState, descriptionText: "${device.displayName} motion is ${motionState}.")	
 
+   		logInfo("Switch turned on.")
 	}
 
 	switchDebugLog()
@@ -197,9 +211,14 @@ def off(){
 				switchState = "off"
 			}
 		}
+		
+		// Prevent event race condition
+		pauseExecution(250)
 
 		// Reverted state
 		sendEvent(name: "switch", value: switchState,  descriptionText: "${device.displayName} switch reverted to ${switchState}.")
+   		logInfo("Switch turned off. Ignored and reverted.")
+		logDebug("Switch reverted to ${switchState}.")
  
 	} else {
 		// Normal switch operation
@@ -217,6 +236,7 @@ def off(){
 		sendEvent(name: "contact", value: contactState, descriptionText: "${device.displayName} contact is ${contactState}.")
 		sendEvent(name: "motion", value: motionState, descriptionText: "${device.displayName} motion is ${motionState}.")	
 
+   		logInfo("Switch turned off.")
 	}
 
 	switchDebugLog()
@@ -246,11 +266,17 @@ def installed(){
 def updated(){
     logDebug("updated() called")
 
+    if (infoLogging) {
+        logInfo ("Info logging turned ON.")
+    } else {
+        logInfo ("Info logging turned OFF.")
+    }
+
     unschedule(disableDebugLogging)
     if (debugLogging) {
         // Schedule it to flip debugLogging=false in 30 minutes
         runIn(30 * 60, disableDebugLogging)
-        log.info "${device.displayName}: Debug logging turned ON for 30 minutes."
+        logInfo ("Debug logging turned ON for 30 minutes.")
     }
 
     // mirror preferences into attributes, etc.
@@ -284,6 +310,12 @@ def uninstalled() {
     logDebug("Driver uninstalled; all schedules cleared.")
 }
 
+private logInfo(String msg) {
+    if (infoLogging) {
+        log.info "${device.displayName}: ${msg}"
+    }
+}
+
 private logDebug(String msg) {
     if (debugLogging) {
         log.debug "${device.displayName}: ${msg}"
@@ -292,15 +324,20 @@ private logDebug(String msg) {
 
 def disableDebugLogging() {
     device.updateSetting("debugLogging", [value: "false", type: "bool"])
-    log.info "${device.displayName}: Debug logging disabled automatically."
+    logInfo ("Debug logging disabled automatically.")
 }
 
 def switchDebugLog() {
-    logDebug("Contact is ${device.currentValue("contact")}.")
+	// Prevent event race condition
+	pauseExecution(250)
+	
+	String msgDebug = "Contact is ${device.currentValue("contact")}. "
 	if(isReversed) {
-		logDebug("Switch is reversed.")
+		msgDebug = msgDebug + "Switch is reversed. "
 	} else {
-		logDebug("Switch is not reversed.")		
+		msgDebug = msgDebug + "Switch is not reversed. "
 	}
-	logDebug("Switch is currently ${device.currentValue("switch")}.")
+    
+	msgDebug = msgDebug + "Switch is currently ${device.currentValue("switch")}."
+	logDebug(msgDebug)
 }
