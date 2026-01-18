@@ -37,6 +37,7 @@
  *  v0.3     2025-06-24  Added delay when ignoring switch toggling to minimize Event race condition
  *                       Added info logging, default is on
  *                       Changed debug logging to default to off
+ *  v0.3.1	 2026-01-17  Updated version number to 0.3.x
  */
 
 metadata {
@@ -71,7 +72,7 @@ metadata {
 	}
 }
 
-String version() { return "0.2" }
+String version() { return "0.3.1" }
 
 def contactOpen(){
 	
