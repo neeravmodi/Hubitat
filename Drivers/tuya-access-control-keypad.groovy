@@ -66,7 +66,7 @@ def getVersion() { return "1.0" }
 metadata {
     definition(name: "Tuya Access Control Keypad", namespace: "neeravmodi", author: "Neerav Modi",
             description: "Local control driver for Tuya WiFi Access Control Keypads paired via the Tuya app or Smart Life app. Supports fingerprint, RFID card, PIN code, and app remote unlock methods with real-time event reporting via persistent TCP connection.",
-            importUrl: "https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Drivers/Tuya-Access-Control-Keypad.groovy") {
+            importUrl: "https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Drivers/tuya-access-control-keypad.groovy") {
         capability "Actuator"
         capability "Lock"
         capability "Sensor"
