@@ -38,6 +38,8 @@
  *                       Added info logging, default is on
  *                       Changed debug logging to default to off
  *  v0.3.1	 2026-01-17  Updated version number to 0.3.x
+ *  v0.3.2	 2026-04-10  Fixed preferences default value parameter name
+ *                       Fixed attribute name mismatches in updated() and installed()
  */
 
 metadata {
@@ -65,14 +67,14 @@ metadata {
 	}
 
 	preferences {
-		input name: "isReversed", type: "bool", default: false, title: "Reverse Switch Behavior", description: "By default, an open contact turns the switch ON.  Turn this preference ON for an open contact to turn the switch OFF."
-        input name: "switchIgnored", type: "bool", default: true, title: "Ignore Switch On/Off", description: "When this preference is ON, turning the switch on or off is ignored.  This prevents toggling the switch in the Home app from affecting the state of the device.  Turn this preference OFF to allow changes to the switch to also change the state of the contact and motion sensors."
-        input name: "debugLogging", type: "bool", default: false, title: "Enable debug logging?", description: "Turn on to enable debug logs"
-        input name: "infoLogging", type: "bool", default: true, title: "Enable info logging?", description: "Turn on to enable info logs"
+		input name: "isReversed", type: "bool", defaultValue: false, title: "Reverse Switch Behavior", description: "By default, an open contact turns the switch ON.  Turn this preference ON for an open contact to turn the switch OFF."
+        input name: "switchIgnored", type: "bool", defaultValue: true, title: "Ignore Switch On/Off", description: "When this preference is ON, turning the switch on or off is ignored.  This prevents toggling the switch in the Home app from affecting the state of the device.  Turn this preference OFF to allow changes to the switch to also change the state of the contact and motion sensors."
+        input name: "debugLogging", type: "bool", defaultValue: false, title: "Enable debug logging?", description: "Turn on to enable debug logs"
+        input name: "infoLogging", type: "bool", defaultValue: true, title: "Enable info logging?", description: "Turn on to enable info logs"
 	}
 }
 
-String version() { return "0.3.1" }
+String version() { return "0.3.2" }
 
 def contactOpen(){
 	
@@ -249,9 +251,12 @@ def installed(){
 
 	sendEvent(name: "contact", value: "closed") 
 	sendEvent(name: "motion", value: "inactive")	
-	sendEvent(name: "isReversed", value: false) 
-	device.updateSetting("switchIgnored",[value: true,type:"bool"])
-	sendEvent(name: "switchIgnored", value: true)	
+
+	device.updateSetting("isReversed", [value: false, type: "bool"])
+	sendEvent(name: "switchIsReversed", value: false) 
+
+	device.updateSetting("switchIgnored", [value: true, type: "bool"])
+	sendEvent(name: "switchIsIgnored", value: true)	
 
 	if(isReversed) {
 		sendEvent(name: "switch", value: "on")
@@ -281,10 +286,10 @@ def updated(){
     }
 
     // mirror preferences into attributes, etc.
-	if (device.currentValue("switchReversed") != isReversed) {
+	if (device.currentValue("switchIsReversed") != isReversed) {
 		sendEvent(name: "switchIsReversed", value: isReversed)	
 	}
-	if (device.currentValue("switchIgnoredAttr") != switchIgnored) {
+	if (device.currentValue("switchIsIgnored") != switchIgnored) {
 		sendEvent(name: "switchIsIgnored", value: switchIgnored)
 	}
 	
@@ -330,6 +335,7 @@ def disableDebugLogging() {
 
 def switchDebugLog() {
 	// Prevent event race condition
+	// Wait for events to settle before reading current values
 	pauseExecution(250)
 	
 	String msgDebug = "Contact is ${device.currentValue("contact")}. "
