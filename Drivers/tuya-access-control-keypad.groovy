@@ -51,6 +51,17 @@
  *            fingerprint/card/PIN/app unlock detection with user slot identification,
  *            device settings control (volume, language, unlock mode, auto lock),
  *            Base64 unlock record decoder, complete confirmed DP map for TFLCD devices.
+ *
+ * v1.1      - Improved connection reliability and logging. Full development history
+ *             available on GitHub. Key changes: heartbeat confirmed as status request
+ *             (type-9 ping causes disconnects); TCP idle timeout confirmed at 32 seconds
+ *             (max safe heartbeat = 31s, default 25s); improved error logging — unexpected
+ *             disconnects and unknown device error codes logged at error level; known
+ *             heartbeat response (error code 1) logged at debug only; added
+ *             connectionWatchdog() to recover from hung connect() calls; added
+ *             lastHeartbeat attribute for connection health visibility; added
+ *             lastUnlockTimestamp attribute to ensure Rule Machine triggers on every
+ *             unlock event regardless of user or method.
  */
 
 import javax.crypto.spec.SecretKeySpec
@@ -61,12 +72,13 @@ import groovy.json.JsonSlurper
 // -------------------------------------------------------
 //  Version — update this on every release
 // -------------------------------------------------------
-def getVersion() { return "1.0" }
+def getVersion() { return "1.1" }
 
 metadata {
     definition(name: "Tuya Access Control Keypad", namespace: "neeravmodi", author: "Neerav Modi",
             description: "Local control driver for Tuya WiFi Access Control Keypads paired via the Tuya app or Smart Life app. Supports fingerprint, RFID card, PIN code, and app remote unlock methods with real-time event reporting via persistent TCP connection.",
-            importUrl: "https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Drivers/tuya-access-control-keypad.groovy") {
+            importUrl: "https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Drivers/tuya-access-control-keypad.groovy",
+            documentationLink: "https://community.hubitat.com/t/release-tuya-wifi-access-control-keypad-driver-local-control-with-unlock-method-user-detection") {
         capability "Actuator"
         capability "Lock"
         capability "Sensor"
@@ -92,8 +104,10 @@ metadata {
         attribute "volume",          "string"   // DP 26 — mute, low, middle, high
         attribute "language",        "string"   // DP 27 — english, chinese_simplified
         attribute "automaticLock",   "string"   // DP 30 — true/false
-        attribute "autoLockTime",    "number"   // DP 31 — seconds
-        attribute "failedAttempts",  "number"   // DP 34
+        attribute "autoLockTime",       "number"   // DP 31 — seconds
+        attribute "failedAttempts",     "number"   // DP 34
+        attribute "lastHeartbeat",      "string"   // timestamp of last successful heartbeat response
+        attribute "lastUnlockTimestamp","string"   // timestamp of last unlock event — always changes to ensure rule triggers
     }
 }
 
@@ -105,10 +119,10 @@ preferences {
     }
     section("Device Behaviour") {
         input "relockDelay",   "number", title: "Hubitat remote unlock relock delay (seconds) — applies to unlockDoor command only; physical unlocks use the device's own auto lock time (DP 31):", defaultValue: 5,    required: true
-        input "relayDpNum",    "text",   title: "Relay DP number (confirmed: 40):",                                      defaultValue: "40", required: true
-        input "doorbellDpNum", "text",   title: "Doorbell DP number (0 = auto-detect):",                                 defaultValue: "0",  required: true
-        input "heartbeatSecs", "number", title: "Heartbeat interval (seconds — do not exceed 28, device timeout ~33s):", defaultValue: 25,   required: true
-        input "reconnectSecs", "number", title: "Reconnect delay on disconnect (seconds):",                              defaultValue: 3,    required: true
+        input "relayDpNum",    "text",   title: "Relay DP number (confirmed: 40):",    defaultValue: "40", required: true
+        input "doorbellDpNum", "text",   title: "Doorbell DP number (0 = auto-detect):", defaultValue: "0",  required: true
+        input "heartbeatSecs", "number", title: "Heartbeat interval (seconds) — sends a status request to verify the connection is alive. Do not exceed 31 seconds — device TCP idle timeout is 32 seconds. Lower values detect stale connections faster after a power loss. Default: 25 seconds.", defaultValue: 25, required: true
+        input "reconnectSecs", "number", title: "Reconnect delay on disconnect (seconds):", defaultValue: 3,    required: true
     }
     section("Logging") {
         input "logEnable", "bool", title: "Enable debug logging (auto-disables after 30 minutes)", defaultValue: false
@@ -165,7 +179,6 @@ def initialize() {
         return
     }
     log.info "Initializing persistent socket connection — v${getVersion()}"
-    sendEvent(name: "connectionStatus", value: "connecting")
     socketBuffer[device.id] = ""
     connectSocket()
 }
@@ -187,19 +200,37 @@ def connectSocket() {
     }
     try {
         if (logEnable) log.debug "Opening persistent socket to ${settings.ipaddress}:6668"
+        sendEvent(name: "connectionStatus", value: "connecting")
+
+        // Schedule watchdog to detect if connect() hangs indefinitely
+        runIn(30, "connectionWatchdog")
+
         interfaces.rawSocket.connect(settings.ipaddress, 6668,
             byteInterface: true,
             readDelay: 0)
+
+        unschedule("connectionWatchdog")
         sendEvent(name: "connectionStatus", value: "connected")
         log.info "Socket connected to ${settings.ipaddress}"
 
-        pauseExecution(300)
-        requestStatus()
+        // Start heartbeat to detect stale connections after device power loss.
+        // Device responds with error code 1 but keeps connection open — this is expected.
         scheduleHeartbeat()
 
     } catch (e) {
+        unschedule("connectionWatchdog")
         log.error "Socket connect failed: ${e.message}"
         sendEvent(name: "connectionStatus", value: "disconnected")
+        scheduleReconnect()
+    }
+}
+
+def connectionWatchdog() {
+    // Fires if connectSocket() has been stuck in "connecting" state for 30 seconds
+    if (device.currentValue("connectionStatus") == "connecting") {
+        log.error "Connection attempt timed out after 30 seconds — retrying"
+        sendEvent(name: "connectionStatus", value: "disconnected")
+        try { interfaces.rawSocket.close() } catch (e) { /* ignore */ }
         scheduleReconnect()
     }
 }
@@ -209,6 +240,7 @@ def disconnectSocket() {
     unschedule("scheduleHeartbeat")
     unschedule("scheduleReconnect")
     unschedule("connectSocket")
+    unschedule("connectionWatchdog")
     try {
         interfaces.rawSocket.close()
     } catch (e) { /* ignore */ }
@@ -225,7 +257,8 @@ def scheduleReconnect() {
 }
 
 // -------------------------------------------------------
-//  Heartbeat — keeps TCP session alive
+//  Heartbeat — detects stale connections after device power loss
+//  Device responds with error code 1 but keeps connection open — expected behavior
 // -------------------------------------------------------
 def scheduleHeartbeat() {
     int hbSecs = (settings.heartbeatSecs ?: 25).toInteger()
@@ -237,11 +270,14 @@ def sendHeartbeat() {
     try {
         interfaces.rawSocket.sendMessage(
             hubitat.helper.HexUtils.byteArrayToHexString(generate_payload("status")))
+        // Record the time the heartbeat was sent — will be confirmed when device responds
         if (device.currentValue("connectionStatus") == "connected") {
             scheduleHeartbeat()
         }
     } catch (e) {
-        if (logEnable) log.debug "Heartbeat failed (already disconnected)"
+        log.error "Heartbeat failed — connection may be lost: ${e.message}"
+        sendEvent(name: "connectionStatus", value: "disconnected")
+        scheduleReconnect()
     }
 }
 
@@ -249,14 +285,17 @@ def sendHeartbeat() {
 //  socketStatus — called by Hubitat on connect/disconnect
 // -------------------------------------------------------
 def socketStatus(String message) {
-    log.info "Socket status: ${message}"
     if (message.contains("disconnect") || message.contains("error") || message.contains("closed")) {
+        log.error "Connection lost — ${message} — will reconnect automatically"
         sendEvent(name: "connectionStatus", value: "disconnected")
         unschedule("sendHeartbeat")
         unschedule("scheduleHeartbeat")
         scheduleReconnect()
     } else if (message.contains("connect")) {
+        log.info "Socket status: ${message}"
         sendEvent(name: "connectionStatus", value: "connected")
+    } else {
+        log.info "Socket status: ${message}"
     }
 }
 
@@ -408,7 +447,24 @@ private void processFrame(String frameHex) {
 
         int cmdByte = msg[11].toInteger() & 0xFF
 
+        // Heartbeat ACK (type 9) — ignore silently
         if (cmdByte == 9) return
+
+        // Check return code at bytes 16-19 for frames that carry a meaningful return code.
+        if (msg.size() >= 20) {
+            long returnCode = ((msg[16] & 0xFF) << 24) | ((msg[17] & 0xFF) << 16) |
+                              ((msg[18] & 0xFF) << 8)  |  (msg[19] & 0xFF)
+            if (returnCode != 0) {
+                if (returnCode == 1) {
+                    // Error code 1 = device rejected our heartbeat status request — expected behavior
+                    if (logEnable) log.debug "Device responded with error code 1 (heartbeat rejected — normal) — frame: ${frameHex}"
+                } else {
+                    // Unknown error code — always log at error level for user to report
+                    log.error "Device returned unexpected error code ${returnCode} for cmd type ${cmdByte} — please report this. Frame: ${frameHex}"
+                }
+                return
+            }
+        }
 
         String statusStr = extractAndDecrypt(msg, cmdByte)
         if (!statusStr) return
@@ -417,7 +473,11 @@ private void processFrame(String frameHex) {
         try {
             obj = new JsonSlurper().parseText(statusStr)
         } catch (e) {
-            if (logEnable) log.debug "Non-JSON payload (ignored): ${statusStr?.take(50)}"
+            // Not valid JSON — log raw hex of the encrypted payload for analysis
+            if (logEnable) {
+                log.debug "Non-JSON payload — decrypted text: ${statusStr?.take(80)}"
+                log.debug "Non-JSON payload — raw frame hex: ${frameHex}"
+            }
             return
         }
 
@@ -430,10 +490,14 @@ private void processFrame(String frameHex) {
 
         if (logEnable) log.debug "DPS: ${dps}"
 
+        // Update lastHeartbeat timestamp on every successful DPS response
+        // This confirms the connection is alive and the device is responding
+        sendEvent(name: "lastHeartbeat", value: new Date().format("yyyy-MM-dd HH:mm:ss"))
+
         dps.each { key, value -> processDP(key.toString(), value) }
 
     } catch (e) {
-        log.warn "processFrame error — ${e.class.simpleName}: ${e.message}"
+        log.error "processFrame error — ${e.class.simpleName}: ${e.message} — please report this"
         if (logEnable) log.debug "Frame that failed: ${frameHex}"
     }
 }
@@ -609,11 +673,13 @@ private void handleDoorbell() {
 
 private void handleUnlock(String method, int userId) {
     String info = "${method.capitalize()} - User slot ${userId}"
+    String timestamp = new Date().format("yyyy-MM-dd HH:mm:ss")
 
-    sendEvent(name: "lock",           value: "unlocked",  descriptionText: "Unlocked via ${info}", isStateChange: true)
-    sendEvent(name: "unlockMethod",   value: method,      descriptionText: "Method: ${method}",    isStateChange: true)
-    sendEvent(name: "unlockUserId",   value: userId,      descriptionText: "User slot: ${userId}", isStateChange: true)
-    sendEvent(name: "lastUnlockInfo", value: info,        descriptionText: info,                   isStateChange: true)
+    sendEvent(name: "lock",                value: "unlocked",  descriptionText: "Unlocked via ${info}", isStateChange: true)
+    sendEvent(name: "unlockMethod",        value: method,      descriptionText: "Method: ${method}",    isStateChange: true)
+    sendEvent(name: "unlockUserId",        value: userId,      descriptionText: "User slot: ${userId}", isStateChange: true)
+    sendEvent(name: "lastUnlockInfo",      value: info,        descriptionText: info,                   isStateChange: true)
+    sendEvent(name: "lastUnlockTimestamp", value: timestamp,   descriptionText: timestamp,               isStateChange: true)
 
     log.info "ACCESS GRANTED — ${method.toUpperCase()}  User slot: ${userId}"
 
