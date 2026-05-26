@@ -39,7 +39,8 @@ definition(
     iconUrl:     "",
     iconX2Url:   "",
     singleInstance: true,
-    importUrl:   "https://github.com/neeravmodi/Hubitat/blob/main/Apps/leakbot-connect.groovy",
+    importUrl:   "https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Integrations/Leakbot/leakbot-connect.groovy",
+    documentationLink: "",
     menu:        "Integrations"
 )
 
