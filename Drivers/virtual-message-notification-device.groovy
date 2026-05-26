@@ -24,7 +24,7 @@
  *
  *  -----------------------------------------------------------------------------------------------------
  *
- *  Last modified: 2026-01-18
+ *  Last modified: 2026-04-10
  *
  *  Change History:
  *
@@ -33,19 +33,23 @@
  *  v0.1                 Initial driver
  *  v0.2     2026-01-18  Initial release
  *                       Added preferences for processing HTML, color, and BBcode
- */
+ *  v0.3     2026-05-25  Simplified color word regex using (?i) case-insensitive flag
+ *                       Added push() stub for Momentary capability
+ *                       Added documentation link
+*/
 
 import java.util.regex.*
 
-static String version()	{ return '0.2' }
+static String version()	{ return '0.3' }
 
 metadata {
 	definition (
         name: "Notification Device", 
         namespace: "neeravmodi", 
-		importUrl: "https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Drivers/virtual-message-notification-device.groovy",
+        author: "Neerav Modi",
         description: "Barebone device driver acting as a notification destination, with the functionality to (re)format dates/times and do HTML markup.",
-        author: "Neerav Modi"
+		importUrl: "https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Drivers/virtual-message-notification-device.groovy",
+		documentationLink: "https://community.hubitat.com/t/release-virtual-message-notification-device/160900"
 	) 
     
     {
@@ -91,6 +95,10 @@ void configure() {
     //state.remove("messageHTML")
 }
 
+void push() {
+    log.warn "push() called on Notification Device -- not implemented"
+}
+
 void deviceNotification(message){
 	sendEvent(name:"messageRaw", value: message)
 	if (debugEnable) log.debug "deviceNotification: incoming message: ${message}" 
@@ -117,19 +125,19 @@ void deviceNotification(message){
 		// Convert color words into color 
 		if (wordColor) {
 			if (usePushover) {
-				message = message.replaceAll(/([Rr][Ee][Dd])/, '[OPEN]font color="#FF0000"[CLOSE]$1[OPEN]/font[CLOSE]')
-				message = message.replaceAll(/([Oo][Rr][Aa][Nn][Gg][Ee])/, '[OPEN]font color=\"\\#FFAD01\"[CLOSE]$1[OPEN]/font[CLOSE]')
-				message = message.replaceAll(/([Yy][Ee][Ll][Ll][Oo][Ww])/, '[OPEN]font color=\"\\#FFEF00\"[CLOSE]$1[OPEN]/font[CLOSE]')
-				message = message.replaceAll(/([Gg][Rr][Ee][Ee][Nn])/, '[OPEN]font color=\"\\#00FF00\"[CLOSE]$1[OPEN]/font[CLOSE]')
-				message = message.replaceAll(/([Bb][Ll][Uu][Ee])/, '[OPEN]font color=\"\\#00a6ff\"[CLOSE]$1[OPEN]/font[CLOSE]')
-				message = message.replaceAll(/([Pp][Uu][Rr][Pp][Ll][Ee])/, '[OPEN]font color=\"\\#A63A79\"[CLOSE]$1[OPEN]/font[CLOSE]')
+				message = message.replaceAll(/(?i)(red)/, '[OPEN]font color="#FF0000"[CLOSE]$1[OPEN]/font[CLOSE]')
+				message = message.replaceAll(/(?i)(orange)/, '[OPEN]font color=\"\\#FFAD01\"[CLOSE]$1[OPEN]/font[CLOSE]')
+				message = message.replaceAll(/(?i)(yellow)/, '[OPEN]font color=\"\\#FFEF00\"[CLOSE]$1[OPEN]/font[CLOSE]')
+				message = message.replaceAll(/(?i)(green)/, '[OPEN]font color=\"\\#00FF00\"[CLOSE]$1[OPEN]/font[CLOSE]')
+				message = message.replaceAll(/(?i)(blue)/, '[OPEN]font color=\"\\#00a6ff\"[CLOSE]$1[OPEN]/font[CLOSE]')
+				message = message.replaceAll(/(?i)(purple)/, '[OPEN]font color=\"\\#A63A79\"[CLOSE]$1[OPEN]/font[CLOSE]')
 			} else {
-				message = message.replaceAll(/([Rr][Ee][Dd])/, '<font color="#FF0000">$1</font>')
-				message = message.replaceAll(/([Oo][Rr][Aa][Nn][Gg][Ee])/, '<font color=\"\\#FFAD01\">$1</font>')
-				message = message.replaceAll(/([Yy][Ee][Ll][Ll][Oo][Ww])/, '<font color=\"\\#FFEF00\">$1</font>')
-				message = message.replaceAll(/([Gg][Rr][Ee][Ee][Nn])/, '<font color=\"\\#00FF00\">$1</font>')
-				message = message.replaceAll(/([Bb][Ll][Uu][Ee])/, '<font color=\"\\#00a6ff\">$1</font>')
-				message = message.replaceAll(/([Pp][Uu][Rr][Pp][Ll][Ee])/, '<font color=\"\\#A63A79\">$1</font>')
+				message = message.replaceAll(/(?i)(red)/, '<font color="#FF0000">$1</font>')
+				message = message.replaceAll(/(?i)(orange)/, '<font color=\"\\#FFAD01\">$1</font>')
+				message = message.replaceAll(/(?i)(yellow)/, '<font color=\"\\#FFEF00\">$1</font>')
+				message = message.replaceAll(/(?i)(green)/, '<font color=\"\\#00FF00\">$1</font>')
+				message = message.replaceAll(/(?i)(blue)/, '<font color=\"\\#00a6ff\">$1</font>')
+				message = message.replaceAll(/(?i)(purple)/, '<font color=\"\\#A63A79\">$1</font>')
 			}
 						
 			if (debugEnable) log.debug "deviceNotification: processed color: ${message}"
