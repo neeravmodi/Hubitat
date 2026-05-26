@@ -40,6 +40,7 @@
  *  v0.3.1	 2026-01-17  Updated version number to 0.3.x
  *  v0.3.2	 2026-04-10  Fixed preferences default value parameter name
  *                       Fixed attribute name mismatches in updated() and installed()
+ *  v0.3.3   2026-05-25  Added documentation link
  */
 
 metadata {
@@ -47,8 +48,9 @@ metadata {
 			name: "Virtual Contact and Motion Sensor With Ignorable Switch", 
 			namespace: "neeravmodi", 
 			author: "Neerav Modi",
+			description: "A driver to mirror a contact or motion sensor as a switch.  However, turning the switch on or off is ignored by default. Useful hack in HomeKit and the Home app to display the state of contact or motion sensors on the main Home page, instead of opening the Security tab and then choosing Contact Sensors or Motion Sensors. Configurable to reverse the switch behavior and to not ignore switch toggling.",
 			importUrl: "https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Drivers/virtual-contact-and-motion-sensor-with-ignorable-switch.groovy",
-			description: "A driver to mirror a contact or motion sensor as a switch.  However, turning the switch on or off is ignored by default. Useful hack in HomeKit and the Home app to display the state of contact or motion sensors on the main Home page, instead of opening the Security tab and then choosing Contact Sensors or Motion Sensors. Configurable to reverse the switch behavior and to not ignore switch toggling."
+			documentationLink: "https://community.hubitat.com/t/release-virtual-contact-and-motion-sensor-with-ignorable-switch/154394"
 		) {
 
 		capability "Actuator"
