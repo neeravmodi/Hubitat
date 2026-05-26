@@ -42,7 +42,8 @@ metadata {
         name:      "Leakbot Device",
         namespace: "neeravmodi",
         author:    "Neerav Modi",
-        importUrl: "https://github.com/neeravmodi/Hubitat/blob/main/Integrations/Leakbot/leakbot-device.groovy"
+        importUrl: "https://raw.githubusercontent.com/neeravmodi/Hubitat/refs/heads/main/Integrations/Leakbot/leakbot-device.groovy",
+        
     ) {
         capability "Sensor"
         capability "Battery"       // standard battery attribute (0-100 number)
